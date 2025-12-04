@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html>
+ <head>
+  <meta charset=utf-8>
+  <title>Isometric LEGO Builder</title>
+  <meta name="viewport" content="width=device-width" />
+  <style>
+      body { margin: 0; overflow: hidden; display: flex; height: 100vh; }
+      #sidebar { width: 250px; background: #f0f0f0; overflow-y: auto; border-right: 1px solid #ccc; padding: 10px; display: flex; flex-direction: column; }
+      #canvas-container { flex-grow: 1; position: relative; }
+      .part-item { display: flex; align-items: center; cursor: pointer; padding: 5px; border-bottom: 1px solid #ddd; }
+      .part-item:hover { background: #e0e0e0; }
+      .part-item img { width: 50px; height: 50px; margin-right: 10px; object-fit: contain; background: #fff; border: 1px solid #eee; }
+      #search { width: 100%; padding: 5px; margin-bottom: 10px; box-sizing: border-box; }
+  </style>
+ </head>
+ <body>
+    <div id="sidebar">
+        <input type="text" id="search" placeholder="Search parts...">
+        <div id="part-list">Loading parts...</div>
+    </div>
+    <div id="canvas-container"></div>
+
+    <!-- Three.js core libraries -->
+    <script src="js/three.min.js"></script>
+    <script src="js/OrbitControls.js"></script>
+
+    <!-- buildinginstructions.js core libraries -->
+    <script src="js/colors.js"></script>
+    <script src="js/LDRShaders.js"></script>
+    <script src="js/LDRColorMaterials.js"></script>
+    <script src="js/LDRGeometries.js"></script>
+    <script src="js/LDRLoader.js"></script>
+    <script src="js/LDRGenerator.js"></script>
+    <script src="js/LDRStuds.js"></script>
+    <script src="js/StudioTexmap.js"></script>
+
+    <script>
+      let camera, scene, renderer, controls;
+      let ldrLoader;
+      let parts = [];
+      let raycaster = new THREE.Raycaster();
+      let mouse = new THREE.Vector2();
+      let plane; // Plane for raycasting
+      let selectedPart = null; // Currently dragging part
+      let pendingPartToAdd = null;
+
+      // Thumbnail logic
+      let thumbScene, thumbCamera, thumbRenderer, thumbLoader;
+      let thumbQueue = [];
+      let thumbProcessing = false;
+      let thumbObserver;
+
+      init();
+      initThumbnails();
+      loadPartsList();
+
+      function init() {
+        // Set up camera (Isometric-ish)
+        let aspect = window.innerWidth / window.innerHeight; // Initial aspect, will be fixed in onWindowResize
+        let d = 200;
+        camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 10000);
+        
+        // Isometric view position
+        camera.position.set(200, 200, 200); 
+        camera.lookAt(scene ? scene.position : new THREE.Vector3(0,0,0));
+
+        // Set up scene
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xFFFFFF);
+
+        // Grid helper
+        let gridHelper = new THREE.GridHelper(1000, 50);
+        scene.add(gridHelper);
+
+        // Plane for raycasting (ground plane)
+        let planeGeometry = new THREE.PlaneGeometry(2000, 2000);
+        planeGeometry.rotateX(-Math.PI / 2);
+        plane = new THREE.Mesh(planeGeometry, new THREE.MeshBasicMaterial({visible: false}));
+        scene.add(plane);
+
+        // Lights
+        let ambientLight = new THREE.AmbientLight(0x666666);
+        scene.add(ambientLight);
+        let directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        directionalLight.position.set(100, 200, 100);
+        scene.add(directionalLight);
+
+        // Set up renderer
+        renderer = new THREE.WebGLRenderer({antialias: true});
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // Controls
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableRotate = false; // Lock rotation for strict isometric view? Or allow? Let's allow for now but maybe snap.
+        // Actually, for a builder, maybe we want to rotate. But "isometric builder" implies fixed angle usually.
+        // Let's keep it rotatable for now.
+
+        window.addEventListener('resize', onWindowResize, false);
+        onWindowResize();
+
+        // Initialize LDRLoader
+        LDR.Studs.makeGenerators('', 0, 1);
+        ldrLoader = new THREE.LDRLoader(onLoad, null, {
+            cleanUpPrimitivesAndSubParts: false,
+            onError: onLoaderError
+        });
+
+        // Event listeners for drag and drop
+        renderer.domElement.addEventListener('mousemove', onMouseMove, false);
+        renderer.domElement.addEventListener('mousedown', onMouseDown, false);
+        renderer.domElement.addEventListener('mouseup', onMouseUp, false);
+
+        window.addEventListener('keydown', function(event) {
+            if (selectedPart && event.key.toLowerCase() === 'r') {
+                selectedPart.rotation.y += Math.PI / 2;
+            }
+        });
+
+        animate();
+      }
+
+      function onLoad() {
+          console.log("Initial load complete");
+          if (pendingPartToAdd) {
+              instantiatePart(pendingPartToAdd);
+              pendingPartToAdd = null;
+          }
+      }
+
+      function onLoaderError(obj) {
+          console.error("LDRLoader Error:", obj);
+          if (pendingPartToAdd) {
+              alert("Failed to load part: " + pendingPartToAdd + "\n" + (obj.message || "Unknown error"));
+              pendingPartToAdd = null;
+          }
+      }
+
+      function onProgress(id) {
+          console.log("Loaded: " + id);
+      }
+
+      function onWindowResize(){
+        const container = document.getElementById('canvas-container');
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        
+        let d = 200;
+        let aspect = w / h;
+        camera.left = -d * aspect;
+        camera.right = d * aspect;
+        camera.top = d;
+        camera.bottom = -d;
+        
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+      }
+
+      function loadPartsList() {
+          fetch('parts.json')
+            .then(response => response.json())
+            .then(data => {
+                parts = data;
+                renderPartList(parts);
+            });
+      }
+
+      function renderPartList(partsToRender) {
+          const list = document.getElementById('part-list');
+          list.innerHTML = '';
+          partsToRender.forEach(part => {
+              let div = document.createElement('div');
+              div.className = 'part-item';
+              div.dataset.part = part;
+              div.onclick = () => addPart(part);
+              
+              let img = document.createElement('img');
+              // Placeholder
+              img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iI2VlZSIvPjwvc3ZnPg==';
+              div.appendChild(img);
+              
+              let span = document.createElement('span');
+              span.textContent = part;
+              div.appendChild(span);
+              
+              list.appendChild(div);
+              
+              if (thumbObserver) thumbObserver.observe(div);
+          });
+      }
+
+      function initThumbnails() {
+          thumbScene = new THREE.Scene();
+          thumbScene.background = new THREE.Color(0xFFFFFF);
+          
+          thumbScene.add(new THREE.AmbientLight(0x666666));
+          let dl = new THREE.DirectionalLight(0xffffff, 1.0);
+          dl.position.set(100, 200, 100);
+          thumbScene.add(dl);
+
+          thumbCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10000);
+          
+          thumbRenderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
+          thumbRenderer.setSize(100, 100);
+          
+          thumbLoader = new THREE.LDRLoader(processThumbQueue, null, {
+              cleanUpPrimitivesAndSubParts: false,
+              onError: (obj) => {
+                  console.warn("Thumbnail load error:", obj);
+                  // Skip this item
+                  if (thumbQueue.length > 0) {
+                      let item = thumbQueue.shift();
+                      // Mark as failed visually?
+                      item.img.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0iI2ZmY2NjYyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZmYwMDAwIiBmb250LXNpemU9IjEyIj5YPC90ZXh0Pjwvc3ZnPg==';
+                      setTimeout(processThumbQueue, 10);
+                  }
+              }
+          });
+          
+          thumbObserver = new IntersectionObserver((entries) => {
+              entries.forEach(entry => {
+                  if (entry.isIntersecting) {
+                      let div = entry.target;
+                      let part = div.dataset.part;
+                      let img = div.querySelector('img');
+                      if (img.src.startsWith('data:image/svg')) { // Not yet loaded
+                          queueThumbnail(part, img);
+                      }
+                      thumbObserver.unobserve(div);
+                  }
+              });
+          });
+      }
+
+      function queueThumbnail(partId, imgElement) {
+          thumbQueue.push({id: partId, img: imgElement});
+          if (!thumbProcessing) {
+              processThumbQueue();
+          }
+      }
+
+      function processThumbQueue() {
+          if (thumbQueue.length === 0) {
+              thumbProcessing = false;
+              return;
+          }
+          thumbProcessing = true;
+          
+          // Check if loader is busy
+          if (thumbLoader.unloadedFiles > 0) return; // Wait for loader callback
+
+          let item = thumbQueue[0]; // Peek
+          
+          // If already loaded in thumbLoader?
+          if (!thumbLoader.partTypes[item.id] || thumbLoader.partTypes[item.id] === true) {
+              thumbLoader.load(item.id);
+              return; // Wait for onLoad
+          }
+
+          // Loaded, render it
+          thumbQueue.shift(); // Remove
+          renderThumbnail(item.id, item.img);
+          
+          // Next
+          setTimeout(processThumbQueue, 10);
+      }
+
+      function renderThumbnail(partId, img) {
+          let partType = thumbLoader.partTypes[partId];
+          if (!partType) return;
+
+          // Clear scene objects (keep lights)
+          thumbScene.children = thumbScene.children.filter(c => c.isLight);
+          
+          let partGroup = new THREE.Group();
+          let opaque = new THREE.Group();
+          let sixteen = new THREE.Group();
+          let trans = new THREE.Group();
+          partGroup.add(opaque);
+          partGroup.add(sixteen);
+          partGroup.add(trans);
+
+          let mc = new LDR.MeshCollector(opaque, sixteen, trans);
+          let colorID = 4; 
+          let origo = new THREE.Vector3();
+          let inv = new THREE.Matrix3();
+          inv.set(1,0,0, 0,-1,0, 0,0,-1); 
+
+          partType.generateThreePart(thumbLoader, colorID, origo, inv, true, false, mc);
+          
+          // Center and zoom
+          let b = mc.boundingBox;
+          if (!b) {
+              // Fallback if bounding box not computed
+               b = new THREE.Box3();
+               b.setFromObject(partGroup);
+          }
+          
+          let elementCenter = new THREE.Vector3();
+          b.getCenter(elementCenter);
+          partGroup.position.set(-elementCenter.x, -elementCenter.y, -elementCenter.z);
+          
+          thumbScene.add(partGroup);
+          
+          let size = b.min.distanceTo(b.max);
+          if (size === 0) size = 10; // Fallback
+          
+          thumbCamera.left = -size;
+          thumbCamera.right = size;
+          thumbCamera.top = size;
+          thumbCamera.bottom = -size;
+          thumbCamera.position.set(size, 0.7*size, size);
+          thumbCamera.lookAt(new THREE.Vector3(0,0,0));
+          thumbCamera.updateProjectionMatrix();
+          
+          thumbRenderer.render(thumbScene, thumbCamera);
+          img.src = thumbRenderer.domElement.toDataURL();
+      }
+
+      document.getElementById('search').addEventListener('input', (e) => {
+          const term = e.target.value.toLowerCase();
+          const filtered = parts.filter(p => p.toLowerCase().includes(term));
+          renderPartList(filtered);
+      });
+
+      function addPart(partId) {
+          if (ldrLoader.unloadedFiles === 0 && ldrLoader.partTypes[partId] && ldrLoader.partTypes[partId] !== true) {
+              instantiatePart(partId);
+          } else {
+              pendingPartToAdd = partId;
+              ldrLoader.load(partId);
+          }
+      }
+
+      function instantiatePart(partId) {
+          let partType = ldrLoader.partTypes[partId];
+          if (!partType || partType === true) {
+              console.error("Part not found or not ready:", partId);
+              return;
+          }
+
+          let partGroup = new THREE.Group();
+          let opaque = new THREE.Group();
+          let sixteen = new THREE.Group();
+          let trans = new THREE.Group();
+          partGroup.add(opaque);
+          partGroup.add(sixteen);
+          partGroup.add(trans);
+
+          let mc = new LDR.MeshCollector(opaque, sixteen, trans);
+          
+          // Default color: 4 (Red)
+          let colorID = 4; 
+          let origo = new THREE.Vector3();
+          let inv = new THREE.Matrix3();
+          inv.set(1,0,0, 0,-1,0, 0,0,-1); // Standard LDraw orientation fix
+
+          partType.generateThreePart(ldrLoader, colorID, origo, inv, true, false, mc);
+
+          // Position at center for now, or at mouse cursor if we were dragging.
+          // For now, add to center (0,0,0)
+          partGroup.position.set(0, 0, 0);
+          
+          scene.add(partGroup);
+          
+          // Select it for moving
+          selectedPart = partGroup;
+      }
+
+      function onMouseMove(event) {
+          if (selectedPart) {
+              mouse.x = (event.clientX - document.getElementById('sidebar').offsetWidth) / renderer.domElement.width * 2 - 1;
+              mouse.y = -(event.clientY / renderer.domElement.height) * 2 + 1;
+
+              raycaster.setFromCamera(mouse, camera);
+              let intersects = raycaster.intersectObject(plane);
+
+              if (intersects.length > 0) {
+                  let point = intersects[0].point;
+                  // Snap to grid (LDraw units are usually 20 per stud, height 24 or 8)
+                  // Let's snap to 10 or 20.
+                  let snap = 10;
+                  selectedPart.position.set(
+                      Math.round(point.x / snap) * snap,
+                      0, // Keep on ground for now
+                      Math.round(point.z / snap) * snap
+                  );
+              }
+          }
+      }
+
+      function onMouseDown(event) {
+          // If we click, maybe we want to select an existing part?
+          // For now, if we have a selectedPart (newly added), clicking places it (deselects it).
+          if (selectedPart) {
+              selectedPart = null;
+          } else {
+              // Select existing part logic here
+          }
+      }
+
+      function onMouseUp(event) {
+          // Nothing for now
+      }
+
+    </script>
+ </body>
+</html>
