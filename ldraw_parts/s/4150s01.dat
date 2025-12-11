@@ -1,0 +1,13 @@
+0 !BRICKHUB_INLINED OFFICIAL
+0 ~Tile  2 x  2 Round with Cross Underside Stud without Top Face
+0 Name: s\4150s01.dat
+0 Author: Andy Westrate [westrate]
+0 !LDRAW_ORG Subpart UPDATE 2014-02
+0 !LICENSE Redistributable under CCAL version 2.0 : see CAreadme.txt
+0 BFC CERTIFY CCW
+1 16 0 0 0 1 0 0 0 1 0 0 0 1 s/15535s02.dat
+1 16 0 0 0 0 0 -1 0 1 0 1 0 0 s/15535s02.dat
+1 16 0 0 0 -1 0 0 0 1 0 0 0 -1 s/15535s02.dat
+1 16 0 0 0 0 0 1 0 1 0 -1 0 0 s/15535s02.dat
+1 16 0 4 0 8 0 0 0 -1 0 0 0 8 4-4disc.dat
+1 16 0 4 0 1 0 0 0 -1 0 0 0 1 stud12.dat

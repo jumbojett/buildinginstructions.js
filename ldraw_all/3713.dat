@@ -1,0 +1,15 @@
+0 !BRICKHUB_INLINED OFFICIAL
+0 Technic Bush with Two Flanges
+0 Name: 3713.dat
+0 Author: James Jessiman
+0 !LDRAW_ORG Part UPDATE 2012-02
+0 !LICENSE Redistributable under CCAL version 2.0 : see CAreadme.txt
+0 BFC CERTIFY CCW
+1 16 0 0 0 1 0 0 0 1 0 0 0 1 bush.dat
+1 16 0 0 -10 0 0 3 3 0 0 0 1 0 4-4ring2.dat
+1 16 0 0 -10 0 0 9 9 0 0 0 1 0 4-4edge.dat
+1 16 0 0 -7 0 0 9 9 0 0 0 1 0 4-4edge.dat
+1 16 0 0 -6 0 0 7 7 0 0 0 1 0 4-4edge.dat
+1 16 0 0 -10 0 0 9 9 0 0 0 3 0 4-4cyli.dat
+1 16 0 0 -6.5 0 0 1 1 0 0 0 0.5 0 4-4con7.dat
+1 16 0 0 -7 0 0 1 1 0 0 0 0.5 0 4-4con8.dat

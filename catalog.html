@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LEGO Part Catalog (Canvas Renderer)</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        #catalog {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 20px;
+        }
+        .part-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 10px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            border: 1px solid #eee;
+            margin-bottom: 10px;
+        }
+        .part-name {
+            font-size: 14px;
+            color: #555;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Classic LEGO Part Catalog</h1>
+    <div id="catalog">Loading parts...</div>
+
+    <script>
+        const LDR_COLORS = {
+            0: '#000000', // Black
+            1: '#0055BF', // Blue
+            2: '#257A24', // Green
+            4: '#C91A09', // Red
+            14: '#F2CD37', // Yellow
+            15: '#FFFFFF', // White
+            19: '#B40000', // Light Red
+            25: '#D67923', // Orange
+            26: '#A03C5F', // Magenta
+            28: '#BF953F', // Dark Tan
+            71: '#923978', // Magentish? No, 71 is Teal usually. Let's use a generic map.
+            72: '#545955', // Dark Bluish Gray
+            320: '#960000', // Dark Red
+            // Add a fallback
+            'default': '#CCCCCC',
+            'edge': '#000000'
+        };
+
+        // Simple LDraw Color Map approximation
+        function getColor(code) {
+            if (code === 16 || code === 24) return null; // Main color / Edge color (handled by context)
+            return LDR_COLORS[code] || LDR_COLORS['default'];
+        }
+
+        class Matrix4 {
+            constructor() {
+                this.elements = [
+                    1, 0, 0, 0,
+                    0, 1, 0, 0,
+                    0, 0, 1, 0,
+                    0, 0, 0, 1
+                ];
+            }
+
+            multiply(b) {
+                const ae = this.elements;
+                const be = b.elements;
+                const te = new Float32Array(16);
+
+                const a11 = ae[0], a12 = ae[4], a13 = ae[8], a14 = ae[12];
+                const a21 = ae[1], a22 = ae[5], a23 = ae[9], a24 = ae[13];
+                const a31 = ae[2], a32 = ae[6], a33 = ae[10], a34 = ae[14];
+                const a41 = ae[3], a42 = ae[7], a43 = ae[11], a44 = ae[15];
+
+                const b11 = be[0], b12 = be[4], b13 = be[8], b14 = be[12];
+                const b21 = be[1], b22 = be[5], b23 = be[9], b24 = be[13];
+                const b31 = be[2], b32 = be[6], b33 = be[10], b34 = be[14];
+                const b41 = be[3], b42 = be[7], b43 = be[11], b44 = be[15];
+
+                te[0] = a11 * b11 + a12 * b21 + a13 * b31 + a14 * b41;
+                te[4] = a11 * b12 + a12 * b22 + a13 * b32 + a14 * b42;
+                te[8] = a11 * b13 + a12 * b23 + a13 * b33 + a14 * b43;
+                te[12] = a11 * b14 + a12 * b24 + a13 * b34 + a14 * b44;
+
+                te[1] = a21 * b11 + a22 * b21 + a23 * b31 + a24 * b41;
+                te[5] = a21 * b12 + a22 * b22 + a23 * b32 + a24 * b42;
+                te[9] = a21 * b13 + a22 * b23 + a23 * b33 + a24 * b43;
+                te[13] = a21 * b14 + a22 * b24 + a23 * b34 + a24 * b44;
+
+                te[2] = a31 * b11 + a32 * b21 + a33 * b31 + a34 * b41;
+                te[6] = a31 * b12 + a32 * b22 + a33 * b32 + a34 * b42;
+                te[10] = a31 * b13 + a32 * b23 + a33 * b33 + a34 * b43;
+                te[14] = a31 * b14 + a32 * b24 + a33 * b34 + a34 * b44;
+
+                te[3] = a41 * b11 + a42 * b21 + a43 * b31 + a44 * b41;
+                te[7] = a41 * b12 + a42 * b22 + a43 * b32 + a44 * b42;
+                te[11] = a41 * b13 + a42 * b23 + a43 * b33 + a44 * b43;
+                te[15] = a41 * b14 + a42 * b24 + a43 * b34 + a44 * b44;
+
+                this.elements = te;
+                return this;
+            }
+        }
+
+        const fileCache = {};
+
+        async function fetchLDraw(filename) {
+            const normalized = filename.replace(/\\/g, '/'); // Normalize Windows-style separators.
+            if (fileCache[normalized]) return fileCache[normalized];
+            
+            // Single consolidated library to avoid scattered lookups.
+            const paths = [
+                `ldraw_all/${normalized}`
+            ];
+
+            for (const path of paths) {
+                try {
+                    const response = await fetch(path);
+                    if (response.ok) {
+                        const text = await response.text();
+                        fileCache[normalized] = text;
+                        return text;
+                    }
+                } catch (e) {
+                    // continue
+                }
+            }
+            console.warn(`Could not load ${normalized}`);
+            return null;
+        }
+
+        async function parseLDraw(text, matrix = new Matrix4(), colorStack = [16]) {
+            const lines = text.split(/\r?\n/);
+            const geometry = {
+                lines: [],
+                triangles: [],
+                quads: []
+            };
+
+            const promises = [];
+
+            for (const line of lines) {
+                const parts = line.trim().split(/\s+/);
+                if (parts.length < 2) continue;
+
+                const type = parseInt(parts[0]);
+                const colorCode = parseInt(parts[1]);
+                
+                // Resolve color
+                let color = getColor(colorCode);
+                if (colorCode === 16) color = getColor(colorStack[colorStack.length - 1]); // Main color
+                if (colorCode === 24) color = '#000000'; // Edge color
+
+                if (type === 1) {
+                    // Sub-file
+                    // 1 <colour> x y z a b c d e f g h i <file>
+                    const x = parseFloat(parts[2]);
+                    const y = parseFloat(parts[3]);
+                    const z = parseFloat(parts[4]);
+                    const a = parseFloat(parts[5]);
+                    const b = parseFloat(parts[6]);
+                    const c = parseFloat(parts[7]);
+                    const d = parseFloat(parts[8]);
+                    const e = parseFloat(parts[9]);
+                    const f = parseFloat(parts[10]);
+                    const g = parseFloat(parts[11]);
+                    const h = parseFloat(parts[12]);
+                    const i = parseFloat(parts[13]);
+                    const subFilename = parts.slice(14).join(' ');
+
+                    const subMatrix = new Matrix4();
+                    // LDraw matrix is:
+                    // a d g x
+                    // b e h y
+                    // c f i z
+                    // 0 0 0 1
+                    subMatrix.elements = [
+                        a, b, c, 0,
+                        d, e, f, 0,
+                        g, h, i, 0,
+                        x, y, z, 1
+                    ];
+
+                    // Combine with current matrix: current * sub
+                    const newMatrix = new Matrix4();
+                    newMatrix.elements = [...matrix.elements];
+                    newMatrix.multiply(subMatrix);
+
+                    const newColorStack = [...colorStack];
+                    if (colorCode !== 16) newColorStack.push(colorCode);
+
+                    promises.push(fetchLDraw(subFilename).then(subText => {
+                        if (subText) {
+                            return parseLDraw(subText, newMatrix, newColorStack).then(subGeo => {
+                                geometry.lines.push(...subGeo.lines);
+                                geometry.triangles.push(...subGeo.triangles);
+                                geometry.quads.push(...subGeo.quads);
+                            });
+                        }
+                    }));
+
+                } else if (type === 2) {
+                    // Line
+                    // 2 <colour> x1 y1 z1 x2 y2 z2
+                    const p1 = transform(parseFloat(parts[2]), parseFloat(parts[3]), parseFloat(parts[4]), matrix);
+                    const p2 = transform(parseFloat(parts[5]), parseFloat(parts[6]), parseFloat(parts[7]), matrix);
+                    geometry.lines.push({ p1, p2, color: '#000000' }); // Force black edges for visibility
+
+                } else if (type === 3) {
+                    // Triangle
+                    const p1 = transform(parseFloat(parts[2]), parseFloat(parts[3]), parseFloat(parts[4]), matrix);
+                    const p2 = transform(parseFloat(parts[5]), parseFloat(parts[6]), parseFloat(parts[7]), matrix);
+                    const p3 = transform(parseFloat(parts[8]), parseFloat(parts[9]), parseFloat(parts[10]), matrix);
+                    geometry.triangles.push({ p1, p2, p3, color: color || '#CCCCCC' });
+
+                } else if (type === 4) {
+                    // Quad
+                    const p1 = transform(parseFloat(parts[2]), parseFloat(parts[3]), parseFloat(parts[4]), matrix);
+                    const p2 = transform(parseFloat(parts[5]), parseFloat(parts[6]), parseFloat(parts[7]), matrix);
+                    const p3 = transform(parseFloat(parts[8]), parseFloat(parts[9]), parseFloat(parts[10]), matrix);
+                    const p4 = transform(parseFloat(parts[11]), parseFloat(parts[12]), parseFloat(parts[13]), matrix);
+                    geometry.quads.push({ p1, p2, p3, p4, color: color || '#CCCCCC' });
+                }
+            }
+
+            await Promise.all(promises);
+            return geometry;
+        }
+
+        function transform(x, y, z, matrix) {
+            const e = matrix.elements;
+            return {
+                x: e[0] * x + e[4] * y + e[8] * z + e[12],
+                y: e[1] * x + e[5] * y + e[9] * z + e[13],
+                z: e[2] * x + e[6] * y + e[10] * z + e[14]
+            };
+        }
+
+        function project(p, width, height, scale, offset) {
+            // Isometric projection
+            // x' = (x - z) * cos(30)
+            // y' = y + (x + z) * sin(30)
+            
+            const isoX = (p.x - p.z) * Math.cos(Math.PI / 6);
+            const isoY = p.y + (p.x + p.z) * Math.sin(Math.PI / 6);
+
+            return {
+                x: width / 2 + isoX * scale + offset.x,
+                y: height / 2 + isoY * scale + offset.y
+            };
+        }
+
+        function drawPart(canvas, geometry) {
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Calculate bounds to auto-scale
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            
+            const allPoints = [];
+            [...geometry.lines, ...geometry.triangles, ...geometry.quads].forEach(prim => {
+                if (prim.p1) allPoints.push(prim.p1);
+                if (prim.p2) allPoints.push(prim.p2);
+                if (prim.p3) allPoints.push(prim.p3);
+                if (prim.p4) allPoints.push(prim.p4);
+            });
+
+            if (allPoints.length === 0) return;
+
+            // Pre-project to find bounds in ISO space (unscaled)
+            allPoints.forEach(p => {
+                const isoX = (p.x - p.z) * Math.cos(Math.PI / 6);
+                const isoY = p.y + (p.x + p.z) * Math.sin(Math.PI / 6);
+                if (isoX < minX) minX = isoX;
+                if (isoX > maxX) maxX = isoX;
+                if (isoY < minY) minY = isoY;
+                if (isoY > maxY) maxY = isoY;
+            });
+
+            const partWidth = maxX - minX;
+            const partHeight = maxY - minY;
+            
+            const scaleX = (width - 40) / partWidth;
+            const scaleY = (height - 40) / partHeight;
+            const scale = Math.min(scaleX, scaleY);
+
+            const offsetX = -(minX + maxX) / 2 * scale;
+            const offsetY = -(minY + maxY) / 2 * scale;
+
+            // Sort polygons by depth (Painter's algorithm)
+            // Simple depth: average Z or Y? In iso, depth is x+z?
+            // Actually, depth order in iso is (x + z). Further back is smaller x+z?
+            // Let's try sorting by average projected Y? No.
+            // Sort by (x + z + y)?
+            // Standard painter's sort for isometric: sort by (x + y + z) usually works for cubes.
+            
+            const polygons = [...geometry.triangles, ...geometry.quads];
+            polygons.sort((a, b) => {
+                const depthA = getDepth(a);
+                const depthB = getDepth(b);
+                return depthA - depthB;
+            });
+
+            function getDepth(poly) {
+                // Simple centroid depth
+                let sumX = 0, sumY = 0, sumZ = 0, count = 0;
+                if (poly.p1) { sumX += poly.p1.x; sumY += poly.p1.y; sumZ += poly.p1.z; count++; }
+                if (poly.p2) { sumX += poly.p2.x; sumY += poly.p2.y; sumZ += poly.p2.z; count++; }
+                if (poly.p3) { sumX += poly.p3.x; sumY += poly.p3.y; sumZ += poly.p3.z; count++; }
+                if (poly.p4) { sumX += poly.p4.x; sumY += poly.p4.y; sumZ += poly.p4.z; count++; }
+                
+                // In LDraw (Y down), things with higher X, higher Z, higher Y are "closer" to viewer?
+                // Wait, standard view:
+                // X right, Y down, Z deep.
+                // Iso view looks from -X, -Y, -Z direction?
+                // Let's just try sorting by sum.
+                return (sumX + sumY + sumZ);
+            }
+
+            // Draw Polygons
+            polygons.forEach(poly => {
+                ctx.fillStyle = poly.color;
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                const p1 = project(poly.p1, width, height, scale, {x: offsetX, y: offsetY});
+                ctx.moveTo(p1.x, p1.y);
+                
+                const p2 = project(poly.p2, width, height, scale, {x: offsetX, y: offsetY});
+                ctx.lineTo(p2.x, p2.y);
+
+                const p3 = project(poly.p3, width, height, scale, {x: offsetX, y: offsetY});
+                ctx.lineTo(p3.x, p3.y);
+
+                if (poly.p4) {
+                    const p4 = project(poly.p4, width, height, scale, {x: offsetX, y: offsetY});
+                    ctx.lineTo(p4.x, p4.y);
+                }
+
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+            });
+
+            // Draw Lines (Edges) on top
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 1.5; // Thicker stroke for edges
+            ctx.beginPath();
+            geometry.lines.forEach(line => {
+                const p1 = project(line.p1, width, height, scale, {x: offsetX, y: offsetY});
+                const p2 = project(line.p2, width, height, scale, {x: offsetX, y: offsetY});
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+            });
+            ctx.stroke();
+        }
+
+        async function init() {
+            const catalog = document.getElementById('catalog');
+            catalog.innerHTML = '';
+
+            try {
+                const response = await fetch('parts.json');
+                const parts = await response.json();
+
+                for (const partFile of parts) {
+                    const card = document.createElement('div');
+                    card.className = 'part-card';
+                    
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 180;
+                    canvas.height = 180;
+                    card.appendChild(canvas);
+
+                    const label = document.createElement('div');
+                    label.className = 'part-name';
+                    label.textContent = partFile.replace('.dat', '');
+                    card.appendChild(label);
+
+                    catalog.appendChild(card);
+
+                    // Load and draw
+                    fetchLDraw(partFile).then(text => {
+                        if (text) {
+                            parseLDraw(text).then(geometry => {
+                                drawPart(canvas, geometry);
+                            });
+                        }
+                    });
+                }
+
+            } catch (e) {
+                catalog.textContent = 'Error loading parts: ' + e.message;
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>

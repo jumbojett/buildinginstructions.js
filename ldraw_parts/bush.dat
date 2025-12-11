@@ -1,0 +1,12 @@
+0 !BRICKHUB_INLINED OFFICIAL
+0 Technic Bush without Base Collar
+0 Name: bush.dat
+0 Author: Guy Vivan [guyvivan]
+0 !LDRAW_ORG Primitive UPDATE 2009-01
+0 !LICENSE Redistributable under CCAL version 2.0 : see CAreadme.txt
+0 BFC CERTIFY CCW
+1 16 0 0 0 1 0 0 0 1 0 0 0 1 bush0.dat
+1 16 0 0 10 1 0 0 0 1 0 0 0 1 bush1.dat
+1 16 0 0 10 0 1 0 -1 0 0 0 0 1 bush1.dat
+1 16 0 0 10 -1 0 0 0 -1 0 0 0 1 bush1.dat
+1 16 0 0 10 0 -1 0 1 0 0 0 0 1 bush1.dat

@@ -1,0 +1,9 @@
+0 !BRICKHUB_INLINED OFFICIAL
+0 Brick  2 x  8
+0 Name: 3007.dat
+0 Author: James Jessiman
+0 !LDRAW_ORG Part UPDATE 2014-01
+0 !LICENSE Redistributable under CCAL version 2.0 : see CAreadme.txt
+0 BFC CERTIFY CCW
+1 16 0 0 0 1 0 0 0 1 0 0 0 1 s/3007s01.dat
+4 16 -80 0 -20 -80 24 -20 80 24 -20 80 0 -20

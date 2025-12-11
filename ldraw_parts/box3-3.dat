@@ -1,0 +1,19 @@
+0 !BRICKHUB_INLINED OFFICIAL
+0 Box with 3 Adjacent Faces and 3 Missing Edges
+0 Name: box3-3.dat
+0 Author: Mark Kennedy [mkennedy]
+0 !LDRAW_ORG Primitive UPDATE 2004-03
+0 !LICENSE Redistributable under CCAL version 2.0 : see CAreadme.txt
+0 BFC CERTIFY CCW
+2 24 1 1 1 -1 1 1
+2 24 -1 1 1 -1 1 -1
+2 24 -1 1 -1 1 1 -1
+2 24 1 1 -1 1 1 1
+2 24 1 -1 1 -1 -1 1
+2 24 1 -1 -1 1 -1 1
+2 24 1 -1 1 1 1 1
+2 24 -1 -1 1 -1 1 1
+2 24 1 -1 -1 1 1 -1
+4 16 1 1 1 1 1 -1 -1 1 -1 -1 1 1
+4 16 1 1 1 1 -1 1 1 -1 -1 1 1 -1
+4 16 1 1 1 -1 1 1 -1 -1 1 1 -1 1

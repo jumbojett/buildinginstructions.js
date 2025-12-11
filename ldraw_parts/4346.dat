@@ -1,0 +1,15 @@
+0 !BRICKHUB_INLINED OFFICIAL
+0 Container Box  2 x  2 x  2 Door with Slot
+0 Name: 4346.dat
+0 Author: James Jessiman
+0 !LDRAW_ORG Part UPDATE 2004-01
+0 !LICENSE Redistributable under CCAL version 2.0 : see CAreadme.txt
+0 BFC CERTIFY CCW
+1 16 0 0 0 1 0 0 0 1 0 0 0 1 s/4346s01.dat
+4 16 20 44 -30 20 40 -30 16 40 -30 16 44 -30
+4 16 -20 40 -30 -20 44 -30 -16 44 -30 -16 40 -30
+4 16 12 44 -30 12 40 -30 -12 40 -30 -12 44 -30
+4 16 20 40 -30 20 0 -30 10 4 -30 10 12 -30
+4 16 -10 12 -30 -10 4 -30 -20 0 -30 -20 40 -30
+4 16 20 40 -30 10 12 -30 -10 12 -30 -20 40 -30
+4 16 10 4 -30 20 0 -30 -20 0 -30 -10 4 -30

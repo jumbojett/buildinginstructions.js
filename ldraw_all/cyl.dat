@@ -1,0 +1,7 @@
+0 sphere texmap test
+0 UNOFFICIAL PART
+0 BFC NOCERTIFY 
+
+0 !TEXMAP START CYLINDRICAL 0 10 0  0 75 0   0 0 -40  360 checker.png
+1 16 0 0 0 40 0 0 0 80 0 0 0 40 4-4cyli.dat
+0 !TEXMAP END

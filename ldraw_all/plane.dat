@@ -1,0 +1,8 @@
+0 plane texmap test
+0 UNOFFICIAL PART
+0 BFC NOCERTIFY
+
+0 !TEXMAP START PLANAR  0 0 0  40 0 0  0 0 40  checker.png
+4 16  0 0 0  40 0 0  40 0 40  0 0 40
+0 !TEXMAP END
+
